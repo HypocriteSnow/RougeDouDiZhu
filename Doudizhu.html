@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>杀戮小丑：斗地主死斗版</title>
+    <!-- 引入 Tailwind CSS 进行极速样式构建 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 React 与 ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- 引入 Babel 用于在浏览器中实时编译 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #022c22; margin: 0; padding: 0; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- 内联 SVG 图标组件 ---
+        const Sword = ({className}) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"></polyline><line x1="13" y1="19" x2="19" y2="13"></line><line x1="16" y1="16" x2="20" y2="20"></line><line x1="19" y1="21" x2="21" y2="19"></line></svg>);
+        const Heart = ({className}) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>);
+        const RefreshCcw = ({className}) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21v-5h5"></path></svg>);
+        const Skull = ({className}) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="12" r="1"></circle><circle cx="15" cy="12" r="1"></circle><path d="M8 20v2h8v-2"></path><path d="m12.5 17-.5-1-.5 1h1z"></path><path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20"></path></svg>);
+        const ShieldAlert = ({className}) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>);
+
+        // --- 常量与配置 ---
+        const SUITS = [
+          { id: 'S', symbol: '♠', color: 'text-slate-800' },
+          { id: 'H', symbol: '♥', color: 'text-red-600' },
+          { id: 'C', symbol: '♣', color: 'text-slate-800' },
+          { id: 'D', symbol: '♦', color: 'text-red-600' }
+        ];
+        const JOKER_SUIT = { id: 'J', symbol: '🃏', color: 'text-purple-600' };
+        const RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
+
+        const getChipValue = (rank) => {
+          if (['J', 'Q', 'K'].includes(rank)) return 10;
+          if (rank === 'A') return 15;
+          if (rank === '2') return 20;
+          if (rank === 'BJ') return 30;
+          if (rank === 'RJ') return 50;
+          return parseInt(rank);
+        };
+
+        const getRankWeight = (rank) => {
+          if (rank === 'BJ') return 16;
+          if (rank === 'RJ') return 17;
+          if (rank === '2') return 15;
+          if (rank === 'A') return 14;
+          if (rank === 'K') return 13;
+          if (rank === 'Q') return 12;
+          if (rank === 'J') return 11;
+          return parseInt(rank);
+        };
+
+        // 扩充了进阶牌型
+        const HAND_TYPES = {
+          'rocket': { name: '王炸', baseChips: 100, mult: 8 },
+          'bomb': { name: '炸弹', baseChips: 60, mult: 5 },
+          'airplane': { name: '飞机', baseChips: 50, mult: 4.5 },
+          'four_two': { name: '四带二', baseChips: 45, mult: 4 },
+          'consecutive_pairs': { name: '连对', baseChips: 40, mult: 4 },
+          'straight': { name: '顺子', baseChips: 30, mult: 3.5 },
+          'three_pair': { name: '三带一对', baseChips: 25, mult: 3 },
+          'three_one': { name: '三带一', baseChips: 20, mult: 2.5 },
+          'triple': { name: '三不带', baseChips: 15, mult: 2 },
+          'pair': { name: '一对', baseChips: 10, mult: 1.5 },
+          'single': { name: '单张', baseChips: 5, mult: 1 }
+        };
+
+        const evaluateDouDizhuHand = (cards) => {
+          if (!cards || cards.length === 0) return null;
+          const len = cards.length;
+          const sorted = [...cards].sort((a, b) => a.weight - b.weight);
+          
+          const counts = {};
+          sorted.forEach(c => counts[c.rank] = (counts[c.rank] || 0) + 1);
+          
+          const groups = Object.entries(counts).map(([rank, count]) => {
+            return { rank, count, weight: sorted.find(c => c.rank === rank).weight };
+          }).sort((a, b) => b.count - a.count || b.weight - a.weight);
+
+          const cardChips = cards.reduce((a, b) => a + b.chipValue, 0);
+          const buildResult = (typeStr, primaryWeight) => {
+            const stats = HAND_TYPES[typeStr];
+            return {
+              type: typeStr, value: primaryWeight, length: len,
+              name: stats.name, baseChips: stats.baseChips, mult: stats.mult,
+              cardChips, totalScore: Math.floor((stats.baseChips + cardChips) * stats.mult)
+            };
+          };
+
+          if (len === 2 && sorted[0].weight === 16 && sorted[1].weight === 17) return buildResult('rocket', 17);
+          if (len === 4 && groups[0].count === 4) return buildResult('bomb', groups[0].weight);
+          if (len === 1) return buildResult('single', groups[0].weight);
+          if (len === 2 && groups[0].count === 2) return buildResult('pair', groups[0].weight);
+          if (len === 3 && groups[0].count === 3) return buildResult('triple', groups[0].weight);
+          if (len === 4 && groups[0].count === 3) return buildResult('three_one', groups[0].weight);
+          if (len === 5 && groups[0].count === 3 && groups[1].count === 2) return buildResult('three_pair', groups[0].weight);
+          
+          // 顺子
+          if (len >= 5 && groups.length === len && groups[0].count === 1 && sorted[len - 1].weight <= 14) {
+            let isStraight = true;
+            for (let i = 1; i < len; i++) if (sorted[i].weight - sorted[i - 1].weight !== 1) isStraight = false;
+            if (isStraight) return buildResult('straight', sorted[len - 1].weight);
+          }
+          
+          // 连对
+          if (len >= 6 && len % 2 === 0 && groups.length === len / 2 && groups[0].count === 2 && groups[0].weight <= 14) {
+             let isSeq = true;
+             let sortedGroups = [...groups].sort((a,b)=> a.weight - b.weight);
+             for(let i=1; i<sortedGroups.length; i++) {
+               if (sortedGroups[i].weight - sortedGroups[i-1].weight !== 1) isSeq = false;
+             }
+             if (isSeq) return buildResult('consecutive_pairs', sortedGroups[sortedGroups.length-1].weight);
+          }
+
+          // 四带二
+          if (len === 6 && groups[0].count === 4) return buildResult('four_two', groups[0].weight);
+          if (len === 8 && groups[0].count === 4 && groups.length === 3 && groups[1].count === 2 && groups[2].count === 2) return buildResult('four_two', groups[0].weight);
+
+          // 飞机
+          const triples = groups.filter(g => g.count >= 3 && g.weight <= 14).sort((a,b) => b.weight - a.weight);
+          for (let i = 0; i < triples.length; i++) {
+              let seq = 1;
+              for (let j = i + 1; j < triples.length; j++) {
+                  if (triples[i].weight - triples[j].weight === seq) seq++; else break;
+              }
+              if (seq >= 2) {
+                  if (len === seq * 3) return buildResult('airplane', triples[i].weight);
+                  if (len === seq * 4) return buildResult('airplane', triples[i].weight);
+                  if (len === seq * 5) return buildResult('airplane', triples[i].weight); 
+              }
+          }
+
+          return null;
+        };
+
+        const canBeat = (playEval, targetEval) => {
+          if (playEval.type === 'rocket') return true;
+          if (playEval.type === 'bomb') {
+            if (targetEval.type !== 'bomb' && targetEval.type !== 'rocket') return true;
+            if (targetEval.type === 'bomb' && playEval.value > targetEval.value) return true;
+            return false;
+          }
+          return playEval.type === targetEval.type && playEval.length === targetEval.length && playEval.value > targetEval.value;
+        };
+
+        const getAllValidPlays = (handCards) => {
+          let validPlays = [];
+          const n = handCards.length;
+          for (let i = 1; i < (1 << n); i++) {
+            let combo = [];
+            for (let j = 0; j < n; j++) if (i & (1 << j)) combo.push(handCards[j]);
+            const evalResult = evaluateDouDizhuHand(combo);
+            if (evalResult) validPlays.push({ cards: combo, eval: evalResult });
+          }
+          return validPlays;
+        };
+
+        function App() {
+          const [gameState, setGameState] = useState('playing'); 
+          const [player, setPlayer] = useState({ hp: 1500, maxHp: 1500, hand: [], deck: [], discard: [] });
+          const [enemy, setEnemy] = useState({ name: '史莱姆地主', hp: 2000, maxHp: 2000, hand: [], deck: [], discard: [] });
+          const [roundOwner, setRoundOwner] = useState('player'); 
+          const [actionTurn, setActionTurn] = useState('player'); 
+          const [currentPlay, setCurrentPlay] = useState(null); 
+          const [trickHistory, setTrickHistory] = useState([]); 
+          const [selectedIds, setSelectedIds] = useState([]);
+          const [announcement, setAnnouncement] = useState(''); 
+
+          const initGame = () => {
+            let fullDeck = [];
+            let idCounter = 0;
+            for (let suit of SUITS) {
+              for (let rank of RANKS) {
+                fullDeck.push({ id: `c_${idCounter++}`, suit, rank, weight: getRankWeight(rank), chipValue: getChipValue(rank) });
+              }
+            }
+            fullDeck.push({ id: `c_${idCounter++}`, suit: JOKER_SUIT, rank: 'BJ', weight: 16, chipValue: 30, name: '小王' });
+            fullDeck.push({ id: `c_${idCounter++}`, suit: JOKER_SUIT, rank: 'RJ', weight: 17, chipValue: 50, name: '大王' });
+            
+            fullDeck = fullDeck.sort(() => Math.random() - 0.5);
+            const pDeck = fullDeck.slice(0, 27);
+            const eDeck = fullDeck.slice(27, 54);
+
+            const initDraw = (deckArr) => {
+              let h = []; let d = [...deckArr];
+              for(let i=0; i<7; i++) h.push(d.pop());
+              return { hand: h, deck: d };
+            };
+
+            setPlayer({ hp: 1500, maxHp: 1500, hand: initDraw(pDeck).hand, deck: initDraw(pDeck).deck, discard: [] });
+            setEnemy({ name: '扑克恶魔', hp: 2000, maxHp: 2000, hand: initDraw(eDeck).hand, deck: initDraw(eDeck).deck, discard: [] });
+            
+            setGameState('playing'); setRoundOwner('player'); setActionTurn('player');
+            setCurrentPlay(null); setTrickHistory([]); setSelectedIds([]);
+            setAnnouncement('战斗开始！\n由你先手出牌发起攻击');
+            setTimeout(() => setAnnouncement(''), 2000);
+          };
+
+          useEffect(() => initGame(), []);
+
+          const drawToSeven = (charState) => {
+            let { hand, deck, discard } = charState;
+            let newHand = [...hand], newDeck = [...deck], newDiscard = [...discard];
+            while (newHand.length < 7) {
+              if (newDeck.length === 0) {
+                if (newDiscard.length === 0) break; 
+                newDeck = newDiscard.sort(() => Math.random() - 0.5); newDiscard = [];
+              }
+              newHand.push(newDeck.pop());
+            }
+            return { ...charState, hand: newHand, deck: newDeck, discard: newDiscard };
+          };
+
+          const executePlay = (actor, cardsToPlay, evalResult) => {
+            const playObj = { by: actor, cards: cardsToPlay, eval: evalResult };
+            setCurrentPlay(playObj);
+            setTrickHistory(prev => [...prev, playObj]);
+
+            if (actor === 'player') {
+              setPlayer(prev => ({ ...prev, hand: prev.hand.filter(c => !cardsToPlay.find(pc => pc.id === c.id)), discard: [...prev.discard, ...cardsToPlay] }));
+              setSelectedIds([]); setActionTurn('enemy');
+            } else {
+              setEnemy(prev => ({ ...prev, hand: prev.hand.filter(c => !cardsToPlay.find(pc => pc.id === c.id)), discard: [...prev.discard, ...cardsToPlay] }));
+              setActionTurn('player');
+            }
+          };
+
+          const executePass = (passer) => {
+            const winner = passer === 'player' ? 'enemy' : 'player'; 
+            const damage = currentPlay.eval.totalScore;
+            const winnerName = winner === 'player' ? '你' : enemy.name;
+            const passerName = passer === 'player' ? '你' : enemy.name;
+            const isDefenseSuccess = winner !== roundOwner;
+
+            if (isDefenseSuccess) {
+                setAnnouncement(`${passerName} 要不起！\n${winnerName} 防守成功！化解了进攻！`);
+            } else {
+                setAnnouncement(`${passerName} 要不起，防守失败！\n受到 ${damage} 点伤害！`);
+                if (winner === 'player') setEnemy(prev => ({ ...prev, hp: Math.max(0, prev.hp - damage) }));
+                else setPlayer(prev => ({ ...prev, hp: Math.max(0, prev.hp - damage) }));
+            }
+
+            setTimeout(() => {
+              setAnnouncement(''); setCurrentPlay(null); setTrickHistory([]);
+              const nextLeader = winner;
+              setRoundOwner(nextLeader); setActionTurn(nextLeader);
+              setPlayer(prev => drawToSeven(prev)); setEnemy(prev => drawToSeven(prev));
+              
+              if (gameState === 'playing') {
+                if(isDefenseSuccess) setAnnouncement(`${nextLeader === 'player' ? '你夺得牌权！\n由你发起新的攻击' : '敌人夺得牌权！\n敌人即将发起攻击'}`);
+                else setAnnouncement(`${nextLeader === 'player' ? '乘胜追击！\n继续由你发起攻击' : '敌人连击！\n敌人继续发起攻击'}`);
+                setTimeout(() => setAnnouncement(''), 1800);
+              }
+            }, 2500);
+          };
+
+          useEffect(() => {
+            if (actionTurn === 'enemy' && gameState === 'playing' && !announcement) {
+              const timer = setTimeout(() => {
+                const validPlays = getAllValidPlays(enemy.hand);
+                let chosenPlay = null;
+                if (!currentPlay) {
+                  if (validPlays.length > 0) {
+                    validPlays.sort((a, b) => a.eval.totalScore - b.eval.totalScore);
+                    chosenPlay = validPlays[0];
+                  }
+                } else {
+                  const beatingPlays = validPlays.filter(p => canBeat(p.eval, currentPlay.eval));
+                  if (beatingPlays.length > 0) {
+                    beatingPlays.sort((a, b) => a.eval.totalScore - b.eval.totalScore);
+                    chosenPlay = beatingPlays[0];
+                  }
+                }
+                if (chosenPlay) executePlay('enemy', chosenPlay.cards, chosenPlay.eval);
+                else executePass('enemy');
+              }, 1500);
+              return () => clearTimeout(timer);
+            }
+          }, [actionTurn, gameState, enemy.hand, currentPlay, announcement]);
+
+          useEffect(() => {
+            if (enemy.hp <= 0 && gameState === 'playing') setGameState('won');
+            if (player.hp <= 0 && gameState === 'playing') setGameState('lost');
+          }, [enemy.hp, player.hp, gameState]);
+
+          const toggleSelectCard = (id) => {
+            if (actionTurn !== 'player' || announcement) return;
+            setSelectedIds(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
+          };
+
+          const selectedCards = useMemo(() => player.hand.filter(c => selectedIds.includes(c.id)), [player.hand, selectedIds]);
+          const handPreview = useMemo(() => evaluateDouDizhuHand(selectedCards), [selectedCards]);
+
+          let canPlayerPlay = false;
+          if (actionTurn === 'player' && !announcement) {
+            if (!currentPlay) canPlayerPlay = handPreview !== null;
+            else canPlayerPlay = handPreview !== null && canBeat(handPreview, currentPlay.eval);
+          }
+
+          const Card = ({ card, isSelected, onClick, isSmall }) => {
+            const w = isSmall ? 'w-12 h-16 text-sm' : 'w-20 h-28 md:w-24 md:h-36';
+            return (
+              <div onClick={onClick} className={`relative ${w} bg-white rounded-lg border-2 flex flex-col items-center justify-between p-1 transition-all ${isSelected ? 'border-blue-500 -translate-y-4 shadow-lg shadow-blue-500/30' : 'border-gray-300'} ${onClick && !announcement ? 'cursor-pointer hover:-translate-y-2' : ''} shrink-0`}>
+                <div className={`self-start font-bold ${card.suit.color} leading-none`}>{card.rank === 'BJ' ? '小' : card.rank === 'RJ' ? '大' : card.rank}</div>
+                <div className={`text-xl ${card.suit.color}`}>{card.suit.symbol}</div>
+                <div className={`self-end font-bold ${card.suit.color} rotate-180 leading-none`}>{card.rank === 'BJ' ? '王' : card.rank === 'RJ' ? '王' : card.rank}</div>
+              </div>
+            );
+          };
+
+          return (
+            <div className="min-h-screen text-white font-sans flex flex-col relative overflow-hidden" style={{backgroundColor: '#022c22'}}>
+              <div className={`bg-green-900/50 p-4 border-b-2 flex justify-between items-center shadow-md transition-colors ${roundOwner === 'enemy' ? 'border-red-500 bg-red-950/30' : 'border-green-800'}`}>
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-16 h-16 bg-slate-800 rounded-full border-2 flex items-center justify-center ${roundOwner === 'enemy' ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'border-slate-600'}`}>
+                       <Skull className="text-red-400 w-8 h-8" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-lg text-red-300">{enemy.name}</h3>
+                          {roundOwner === 'enemy' && <span className="bg-red-600 text-xs px-2 py-0.5 rounded text-white font-bold animate-pulse">攻击回合</span>}
+                      </div>
+                      <div className="flex items-center gap-2 text-red-400 font-mono">
+                        <Heart className="w-4 h-4" /> {enemy.hp} / {enemy.maxHp}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-4 md:gap-6 text-xs md:text-sm font-mono text-green-300 bg-green-950 p-2 rounded-lg border border-green-800">
+                   <div className="flex flex-col items-center"><span className="hidden md:inline">专属牌库</span><span className="md:hidden">库</span><span className="text-lg">{enemy.deck.length}</span></div>
+                   <div className="flex flex-col items-center"><span className="hidden md:inline">手牌</span><span className="md:hidden">手</span><span className="text-lg text-yellow-400">{enemy.hand.length}</span></div>
+                   <div className="flex flex-col items-center"><span className="hidden md:inline">弃牌堆</span><span className="md:hidden">弃</span><span className="text-lg">{enemy.discard.length}</span></div>
+                </div>
+              </div>
+
+              <main className="flex-1 relative flex flex-col items-center justify-center p-4">
+                {announcement && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="text-3xl md:text-5xl font-bold text-yellow-400 tracking-wider text-center whitespace-pre-line drop-shadow-[0_0_15px_rgba(0,0,0,0.8)] animate-bounce">{announcement}</div>
+                  </div>
+                )}
+                <div className="w-full max-w-3xl flex flex-col gap-6 overflow-y-auto max-h-full hide-scrollbar p-2">
+                  {trickHistory.length === 0 && !announcement && (
+                    <div className="text-center text-green-700 font-bold text-2xl italic flex flex-col items-center gap-2">
+                        {roundOwner === 'player' ? '你的攻击回合，请出牌发难！' : '敌人的攻击回合，准备防守！'}
+                    </div>
+                  )}
+                  {trickHistory.map((play, idx) => (
+                    <div key={idx} className={`flex flex-col gap-2 p-4 rounded-xl border-2 shadow-xl bg-green-900/80 ${play.by === 'player' ? 'self-end border-blue-500 items-end' : 'self-start border-red-500 items-start'}`}>
+                      <div className="text-sm font-bold flex items-center gap-2">
+                        <span className={play.by === 'player' ? 'text-blue-300' : 'text-red-300'}>{play.by === 'player' ? '你' : enemy.name} {idx === 0 ? ' (发起攻击)' : ' (压制防守)'}</span>
+                        <span className="bg-slate-800 px-2 py-0.5 rounded text-white">{play.eval.name}</span>
+                        <span className="text-yellow-400 font-mono">{play.eval.totalScore} 潜在伤害</span>
+                      </div>
+                      <div className="flex gap-[-10px] flex-wrap justify-end">
+                        {play.cards.map(c => <Card key={c.id} card={c} isSmall />)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </main>
+
+              <div className={`bg-green-900 border-t-4 p-4 transition-colors ${roundOwner === 'player' ? 'border-blue-500 bg-blue-950/20' : 'border-green-800'}`}>
+                <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-end gap-4 mb-6">
+                  <div className="flex gap-6 items-end w-full md:w-auto justify-between md:justify-start">
+                    <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                          <span className="text-sm text-slate-400">生命值</span>
+                          {roundOwner === 'player' && <span className="bg-blue-600 text-xs px-2 py-0.5 rounded text-white font-bold animate-pulse">攻击回合</span>}
+                      </div>
+                      <div className="flex items-center gap-2 text-green-400 font-mono text-xl">
+                        <Heart className="w-5 h-5 text-red-500" /> {player.hp} / {player.maxHp}
+                      </div>
+                    </div>
+                    <div className="flex gap-4 text-sm font-mono text-green-300 bg-green-950 p-2 rounded-lg border border-green-800">
+                      <div className="flex flex-col items-center"><span>专属牌库</span><span className="text-lg">{player.deck.length}</span></div>
+                      <div className="flex flex-col items-center"><span>弃牌堆</span><span className="text-lg">{player.discard.length}</span></div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-2 w-full md:w-auto">
+                    <div className="h-8 text-yellow-300 font-mono font-bold w-full text-right">
+                      {handPreview ? (<span>{handPreview.name}: {handPreview.totalScore} 伤害</span>) : selectedCards.length > 0 ? (<span className="text-slate-400">无效的牌型</span>) : null}
+                    </div>
+                    <div className="flex gap-3 w-full justify-end">
+                      {currentPlay && (
+                        <button disabled={actionTurn !== 'player' || !!announcement} onClick={() => executePass('player')} className="px-4 md:px-6 py-3 rounded-xl font-bold bg-slate-700 hover:bg-slate-600 text-white disabled:opacity-50 transition-all border border-slate-500 flex items-center gap-2 text-sm md:text-base">
+                          <ShieldAlert className="w-4 h-4 md:w-5 md:h-5" />
+                          <span className="hidden md:inline">{roundOwner === 'enemy' ? '要不起 (防守失败，承受伤害)' : '要不起 (放弃攻击，结束连击)'}</span>
+                          <span className="md:hidden">要不起</span>
+                        </button>
+                      )}
+                      <button disabled={!canPlayerPlay} onClick={() => executePlay('player', selectedCards, handPreview)} className={`flex items-center gap-2 px-6 md:px-8 py-3 rounded-xl font-bold transition-all shadow-lg text-sm md:text-base ${canPlayerPlay ? (currentPlay ? 'bg-yellow-600 hover:bg-yellow-500 text-white shadow-yellow-500/50' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/50') : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'}`}>
+                        {currentPlay ? <ShieldAlert className="w-4 h-4 md:w-5 md:h-5" /> : <Sword className="w-4 h-4 md:w-5 md:h-5" />}
+                        <span className="hidden md:inline">{currentPlay ? '压死他！(防守/反压)' : '出牌攻击 (Lead)'}</span>
+                        <span className="md:hidden">{currentPlay ? '压死他' : '出牌攻击'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-start md:justify-center gap-2 overflow-x-auto hide-scrollbar pb-4 px-2 min-h-[160px] w-full snap-x">
+                  {player.hand.map((card) => (
+                    <Card key={card.id} card={card} isSelected={selectedIds.includes(card.id)} onClick={() => toggleSelectCard(card.id)} />
+                  ))}
+                </div>
+              </div>
+
+              {gameState !== 'playing' && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md">
+                   <div className="bg-green-950 p-10 rounded-3xl border-4 border-green-800 text-center flex flex-col items-center gap-6 max-w-lg shadow-2xl mx-4">
+                      <h2 className={`text-4xl md:text-5xl font-black ${gameState === 'won' ? 'text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]' : 'text-red-600 drop-shadow-[0_0_10px_rgba(220,38,38,0.8)]'}`}>
+                        {gameState === 'won' ? '地主破产！' : '你被榨干了...'}
+                      </h2>
+                      <p className="text-lg md:text-xl text-green-200">
+                        {gameState === 'won' ? '绝妙的牌技，你赢下了这场斗地主死斗！' : '史莱姆地主的牌技更胜一筹。'}
+                      </p>
+                      <button onClick={initGame} className="mt-4 flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-green-950 px-8 py-4 rounded-full font-bold text-xl transition-all hover:scale-105">
+                        <RefreshCcw className="w-6 h-6" /> 再来一局
+                      </button>
+                   </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
