@@ -1,11 +1,12 @@
-﻿export interface EnemyTemplate {
+﻿import type { BattleNodeType } from '@/engine/types'
+
+export interface EnemyTemplate {
   name: string
-  maxHp: number
+  nodeType: Exclude<BattleNodeType, 'merchant_campfire'>
 }
 
 export const ENEMY_TABLE: EnemyTemplate[] = [
-  { name: '史莱姆地主', maxHp: 1700 },
-  { name: '牌桌猎犬', maxHp: 1950 },
-  { name: '黑桃审判官', maxHp: 2250 },
-  { name: '扑克恶魔', maxHp: 2600 },
+  { name: '史莱姆地主', nodeType: 'normal' },
+  { name: '黑桃审判官', nodeType: 'elite' },
+  { name: '扑克恶魔', nodeType: 'boss' },
 ]

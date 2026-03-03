@@ -1,7 +1,7 @@
 ﻿import { SAVE_VERSION } from '@/engine/constants'
 import type { SaveSnapshot } from '@/engine/types'
 
-const SAVE_KEY = 'rouge_doudizhu_save_v1'
+const SAVE_KEY = 'rouge_doudizhu_save_v3'
 
 export function saveSnapshot(snapshot: SaveSnapshot): void {
   try {

@@ -34,6 +34,10 @@ export type HandType =
 
 export type AirplaneWing = 'none' | 'single' | 'pair'
 
+export type BattleNodeType = 'normal' | 'elite' | 'boss' | 'merchant_campfire'
+
+export type RelicRarity = 'blue' | 'purple' | 'orange'
+
 export interface Card {
   id: string
   suit: SuitId
@@ -68,6 +72,8 @@ export interface CombatState {
   currentPlay: PlayRecord | null
   trickHistory: PlayRecord[]
   log: string[]
+  battleDamageDealt: number
+  battleTurns: number
 }
 
 export interface CharacterState {
@@ -78,10 +84,75 @@ export interface CharacterState {
   discard: Card[]
 }
 
-export interface RewardOption {
+export type HandLevelState = Record<HandType, number>
+
+export interface PlayerProgress {
+  level: number
+  xp: number
+  xpToNext: number
+}
+
+export interface RelicDefinition {
   id: string
+  name: string
+  rarity: RelicRarity
+  description: string
+  effectType: 'none'
+}
+
+export interface OwnedRelic {
+  id: string
+  name: string
+  rarity: RelicRarity
+  description: string
+  effectType: 'none'
+}
+
+export interface RewardChoiceHandUpgrade {
+  id: string
+  type: 'hand_upgrade'
   title: string
   description: string
+  handType: HandType
+  deltaLevel: number
+}
+
+export interface RewardChoiceHandWildcard {
+  id: string
+  type: 'hand_wildcard'
+  title: string
+  description: string
+  deltaLevel: number
+}
+
+export interface RewardChoiceXpBonus {
+  id: string
+  type: 'xp_bonus'
+  title: string
+  description: string
+  xpGain: number
+}
+
+export interface RewardChoiceRelicPick {
+  id: string
+  type: 'relic_pick'
+  title: string
+  description: string
+  relicId: string
+}
+
+export type RewardChoice =
+  | RewardChoiceHandUpgrade
+  | RewardChoiceHandWildcard
+  | RewardChoiceXpBonus
+  | RewardChoiceRelicPick
+
+export interface RewardOffer {
+  id: string
+  offerType: 'hand_upgrade' | 'relic_pick'
+  title: string
+  subtitle: string
+  choices: RewardChoice[]
 }
 
 export interface RunSettings {
@@ -109,11 +180,16 @@ export interface RunState {
   rngState: number
   battleIndex: number
   totalBattles: number
+  currentNodeType: BattleNodeType
   status: RunStatus
   player: CharacterState
   enemy: CharacterState & { name: string }
   combat: CombatState
-  pendingRewards: RewardOption[]
+  progress: PlayerProgress
+  handLevels: HandLevelState
+  ownedRelics: OwnedRelic[]
+  rewardQueue: RewardOffer[]
+  activeRewardOffer: RewardOffer | null
   buffs: RunBuffs
   settings: RunSettings
   stats: RunStats

@@ -16,19 +16,27 @@ function card(id: string, rank: Rank, suit: Card['suit'] = 'S'): Card {
   }
 }
 
-function baseState(): RunState {
+function snapshotFromState(state: RunState): SaveSnapshot {
+  return {
+    version: SAVE_VERSION,
+    savedAt: new Date().toISOString(),
+    runState: state,
+  }
+}
+
+function makePassResolutionState(base: RunState): RunState {
   const attackCards = [card('p1', 'A')]
   const attackEval = evaluateHand(attackCards)
   if (!attackEval) throw new Error('invalid test setup')
 
   return {
-    runId: 'run_test',
-    seed: 'test_seed',
-    rngState: 123,
+    ...base,
+    status: 'in_battle',
+    currentNodeType: 'normal',
     battleIndex: 1,
     totalBattles: 3,
-    status: 'in_battle',
     player: {
+      ...base.player,
       hp: 1200,
       maxHp: 1200,
       hand: [],
@@ -36,6 +44,7 @@ function baseState(): RunState {
       discard: [],
     },
     enemy: {
+      ...base.enemy,
       name: '测试敌人',
       hp: 20,
       maxHp: 800,
@@ -44,6 +53,7 @@ function baseState(): RunState {
       discard: [],
     },
     combat: {
+      ...base.combat,
       roundOwner: 'player',
       actionTurn: 'enemy',
       currentPlay: {
@@ -53,50 +63,38 @@ function baseState(): RunState {
       },
       trickHistory: [],
       log: [],
+      battleDamageDealt: 0,
+      battleTurns: 0,
     },
-    pendingRewards: [],
-    buffs: {
-      playerDamageMult: 1,
-      playerDamageFlat: 0,
+    progress: {
+      level: 1,
+      xp: 130,
+      xpToNext: 140,
     },
-    settings: {
-      sfxVolume: 0.5,
-      animationSpeed: 'normal',
-    },
-    stats: {
-      battlesWon: 0,
-      totalDamageDealt: 0,
-      totalDamageTaken: 0,
-      turnsPlayed: 0,
-    },
-  }
-}
-
-function snapshotFromState(state: RunState): SaveSnapshot {
-  return {
-    version: SAVE_VERSION,
-    savedAt: new Date().toISOString(),
-    runState: state,
+    rewardQueue: [],
+    activeRewardOffer: null,
   }
 }
 
 describe('GameEngine.pass', () => {
-  it('攻击方压制到底时造成伤害并进入奖励阶段', () => {
+  it('攻击方压制到底时造成伤害并进入奖励流', () => {
     const engine = new GameEngine('seed_x')
-    engine.restore(snapshotFromState(baseState()))
+    const state = makePassResolutionState(engine.getState())
 
+    engine.restore(snapshotFromState(state))
     const result = engine.pass('enemy')
 
     expect(result.ok).toBe(true)
     expect(result.state.enemy.hp).toBe(0)
     expect(result.state.status).toBe('reward')
-    expect(result.state.pendingRewards).toHaveLength(3)
+    expect(result.state.activeRewardOffer?.offerType).toBe('hand_upgrade')
+    expect(result.state.rewardQueue[0]?.offerType).toBe('relic_pick')
     expect(result.state.stats.battlesWon).toBe(1)
   })
 
   it('防守成功时不造成伤害并转移牌权', () => {
     const engine = new GameEngine('seed_y')
-    const state = baseState()
+    const state = makePassResolutionState(engine.getState())
 
     state.enemy.hp = 600
     state.combat.roundOwner = 'enemy'
@@ -111,3 +109,4 @@ describe('GameEngine.pass', () => {
     expect(result.state.status).toBe('in_battle')
   })
 })
+

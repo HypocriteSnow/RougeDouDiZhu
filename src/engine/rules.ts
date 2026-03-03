@@ -1,5 +1,5 @@
-﻿import { HAND_STATS } from '@/engine/constants'
-import type { Card, HandEval } from '@/engine/types'
+﻿import { HAND_STATS, getLeveledHandStats } from '@/engine/constants'
+import type { Card, HandEval, HandLevelState } from '@/engine/types'
 
 interface RankGroup {
   rank: string
@@ -156,6 +156,21 @@ export function evaluateHand(cards: Card[]): HandEval | null {
   }
 
   return detectAirplane(cards, groups)
+}
+
+export function applyHandLevelToEval(evalResult: HandEval, level: number): HandEval {
+  const stats = getLeveledHandStats(evalResult.type, level)
+  return {
+    ...evalResult,
+    name: stats.name,
+    baseChips: stats.baseChips,
+    mult: stats.mult,
+    totalScore: Math.floor((stats.baseChips + evalResult.cardChips) * stats.mult),
+  }
+}
+
+export function applyHandLevelsToEval(evalResult: HandEval, levels: HandLevelState): HandEval {
+  return applyHandLevelToEval(evalResult, levels[evalResult.type] ?? 1)
 }
 
 export function canBeat(playEval: HandEval, targetEval: HandEval): boolean {

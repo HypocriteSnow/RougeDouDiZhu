@@ -2,6 +2,16 @@
 import { randomInt } from '@/engine/rng'
 import type { Card, CharacterState, Rank, SuitId } from '@/engine/types'
 
+export type HandSortMode = 'rank_desc' | 'suit_group'
+
+const SUIT_PRIORITY: Record<SuitId, number> = {
+  S: 0,
+  C: 1,
+  H: 2,
+  D: 3,
+  J: 4,
+}
+
 export function getChipValue(rank: Rank): number {
   if (['J', 'Q', 'K'].includes(rank)) return 10
   if (rank === 'A') return 15
@@ -81,6 +91,24 @@ export function pickCardsByIds(cards: Card[], ids: string[]): Card[] {
   return picked
 }
 
+export function compareCardsByRankDesc(a: Card, b: Card): number {
+  if (b.weight !== a.weight) return b.weight - a.weight
+  if (a.suit !== b.suit) return SUIT_PRIORITY[a.suit] - SUIT_PRIORITY[b.suit]
+  return a.id.localeCompare(b.id)
+}
+
+export function compareCardsBySuitGroup(a: Card, b: Card): number {
+  if (a.suit !== b.suit) return SUIT_PRIORITY[a.suit] - SUIT_PRIORITY[b.suit]
+  if (b.weight !== a.weight) return b.weight - a.weight
+  return a.id.localeCompare(b.id)
+}
+
+export function sortCardsForDisplay(cards: Card[], mode: HandSortMode = 'rank_desc'): Card[] {
+  const sorted = [...cards]
+  sorted.sort(mode === 'suit_group' ? compareCardsBySuitGroup : compareCardsByRankDesc)
+  return sorted
+}
+
 export function drawToLimit(
   character: CharacterState,
   handLimit: number,
@@ -108,7 +136,7 @@ export function drawToLimit(
   return {
     character: {
       ...character,
-      hand,
+      hand: sortCardsForDisplay(hand, 'rank_desc'),
       deck,
       discard,
     },

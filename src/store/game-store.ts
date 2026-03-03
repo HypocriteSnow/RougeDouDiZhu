@@ -2,7 +2,7 @@
 
 import { decideEnemyAction } from '@/engine/ai'
 import { GameEngine } from '@/engine/game-engine'
-import { evaluateHand } from '@/engine/rules'
+import { applyHandLevelsToEval, evaluateHand, getValidPlays } from '@/engine/rules'
 import type { EngineResult, RunState } from '@/engine/types'
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '@/lib/persistence'
 
@@ -34,6 +34,24 @@ function eventToBanner(result: EngineResult): string {
 
 function persist(engine: GameEngine): void {
   saveSnapshot(engine.serialize())
+}
+
+function fallbackEnemyAct(engine: GameEngine, state: RunState): EngineResult {
+  const validPlays = getValidPlays(state.enemy.hand, state.combat.currentPlay?.eval)
+  if (validPlays.length > 0) {
+    validPlays.sort((a, b) => a.eval.totalScore - b.eval.totalScore)
+    return engine.playCards('enemy', validPlays[0].cards.map((card) => card.id))
+  }
+
+  if (state.combat.currentPlay) {
+    return engine.pass('enemy')
+  }
+
+  if (state.enemy.hand.length > 0) {
+    return engine.playCards('enemy', [state.enemy.hand[0].id])
+  }
+
+  return engine.pass('enemy')
 }
 
 function initEngine(): { engine: GameEngine; runState: RunState } {
@@ -113,7 +131,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       randomValue: engine.consumeRandom(),
     })
 
-    const result = decision.action === 'play' ? engine.playCards('enemy', decision.cardIds ?? []) : engine.pass('enemy')
+    let result = decision.action === 'play' ? engine.playCards('enemy', decision.cardIds ?? []) : engine.pass('enemy')
+
+    if (!result.ok) {
+      result = fallbackEnemyAct(engine, runState)
+    }
 
     persist(engine)
     set({ runState: result.state, banner: eventToBanner(result), selectedIds: [] })
@@ -174,5 +196,7 @@ export function useSelectedHandEval() {
   const selectedIds = useGameStore((state) => state.selectedIds)
 
   const selectedCards = runState.player.hand.filter((card) => selectedIds.includes(card.id))
-  return evaluateHand(selectedCards)
+  const evalResult = evaluateHand(selectedCards)
+  if (!evalResult) return null
+  return applyHandLevelsToEval(evalResult, runState.handLevels)
 }
